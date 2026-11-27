@@ -33,6 +33,8 @@ services:
     # Map host port 8111 to container port 8080 for web access
     ports:
       - "8111:8080"
+    networks:
+      my_net:
       
     # Execute system setup, dependency installation, CUDA compilation, and start the server
     command: >
