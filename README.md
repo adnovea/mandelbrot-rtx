@@ -1,6 +1,6 @@
 # Mandelbrot-RTX
 
-A Mandelbrot fractal explorer capable of zooming up to \(10^{-14}\), running directly in a web browser.
+A Mandelbrot fractal explorer capable of zooming up to \(10^{-14}\), remotely displayed in a web browser.
 
 This project was developed as a proof of concept to execute complex mathematical equations (such as the Mandelbrot set) on an **NVIDIA RTX 5000 series GPU** using Docker. It has been tested on a **QNAP NAS** equipped with an **RTX 5060 Ti 16GB** GPU.
 
