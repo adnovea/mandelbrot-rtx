@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Mandelbrot RTX 5060</title>
+    <style>
+        /* Fullscreen dark viewport layout */
+        body { margin: 0; background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: monospace; }
+        
+        /* Fit the rendered canvas inside the window while keeping aspect ratio */
+        canvas { width: 100vw; height: 100vh; object-fit: contain; cursor: grab; }
+        canvas:active { cursor: grabbing; }
+        
+        /* Floating translucent HUD overlay in the top-left corner */
+        #hud {
+            position: absolute; top: 12px; left: 12px; color: #fff;
+            background: rgba(15, 15, 20, 0.75); backdrop-filter: blur(6px);
+            padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15);
+            display: flex; flex-direction: column; gap: 6px; font-size: 13px;
+        }
+        
+        /* Styled controls for resolution dropdown and reset button */
+        select, button {
+            background: #222; color: #fff; border: 1px solid #555;
+            padding: 4px 8px; border-radius: 4px; font-family: monospace; cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Heads-Up Display (HUD) showing telemetry and resolution controls -->
+    <div id="hud">
+        <div><strong>Mandelbrot Explorer - RTX 5000 CUDA</strong></div>
+        <div id="stats">Zoom: 1.00x | Iter: 300 | GPU: -- ms</div>
+        <div style="display:flex; gap:8px; align-items:center;">
+            <label for="res">Resolution:</label>
+            <select id="res">
+                <option value="1280x720" selected>720p (HD)</option>
+                <option value="1920x1080">1080p (Full HD)</option>
+                <option value="3840x2160">2160p (4K UHD)</option>
+            </select>
+            <button id="reset">Reset</button>
+        </div>
+        <div style="color:#aaa; font-size:11px;">Scroll: Cursor Zoom | Drag: Pan</div>
+    </div>
+
+    <canvas id="canvas" width="1280" height="720"></canvas>
+
+    <script>
+        // DOM references and WebSocket connection setup
+        const canvas    = document.getElementById("canvas");
+        const ctx       = canvas.getContext("2d");
+        const stats     = document.getElementById("stats");
+        const resSelect = document.getElementById("res");
+        const ws        = new WebSocket(`ws://${location.host}/ws`);
+
+        // Initial complex plane state and resolution
+        let cx = -0.5, cy = 0.0, zoom = 1.0, iter = 300;
+        let width = 1280, height = 720;
+        let isDragging = false, lastX, lastY, lastGpuMs = 0;
+
+        // Send current camera parameters to the server to trigger a GPU render
+        function requestFrame() {
+            if (ws.readyState === WebSocket.OPEN) {
+                // Scale iteration count logarithmically with zoom depth (capped at 5000)
+                iter = Math.min(5000, Math.floor(300 + Math.log10(zoom) * 250));
+                ws.send(JSON.stringify({ cx, cy, zoom, iter, width, height }));
+            }
+        }
+
+        // Render initial frame once the WebSocket connection opens
+        ws.onopen = requestFrame;
+
+        // Process alternating JSON telemetry messages and binary JPEG frames
+        ws.onmessage = async (event) => {
+            if (typeof event.data === "string") {
+                const meta = JSON.parse(event.data);
+                lastGpuMs = meta.gpu_ms;
+                stats.textContent = `Zoom: ${zoom.toExponential(2)} | Iter: ${iter} | GPU+Transfer: ${lastGpuMs} ms`;
+            } else {
+                const bitmap = await createImageBitmap(event.data);
+                ctx.drawImage(bitmap, 0, 0);
+            }
+        };
+
+        // Zoom in/out anchored directly on the mouse cursor position
+        canvas.addEventListener("wheel", (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = (e.clientX - rect.left) / rect.width;   // Normalized [0..1]
+            const mouseY = (e.clientY - rect.top) / rect.height;   // Normalized [0..1]
+
+            const aspect = width / height;
+            const spanY = 2.5 / zoom;
+            const spanX = spanY * aspect;
+
+            // Compute complex plane coordinates currently under the mouse cursor
+            const targetX = (cx - spanX / 2) + mouseX * spanX;
+            const targetY = (cy - spanY / 2) + mouseY * spanY;
+
+            // Apply zoom factor
+            const factor = e.deltaY < 0 ? 1.3 : 1 / 1.3;
+            zoom *= factor;
+
+            // Recalculate center coordinates so the point beneath the cursor remains stationary
+            const newSpanY = 2.5 / zoom;
+            const newSpanX = newSpanY * aspect;
+            cx = targetX - (mouseX - 0.5) * newSpanX;
+            cy = targetY - (mouseY - 0.5) * newSpanY;
+
+            requestFrame();
+        });
+
+        // Click-and-drag panning across the complex plane
+        canvas.addEventListener("mousedown", (e) => { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
+        window.addEventListener("mouseup", () => isDragging = false);
+        window.addEventListener("mousemove", (e) => {
+            if (!isDragging) return;
+            const rect = canvas.getBoundingClientRect();
+            const spanY = 2.5 / zoom;
+            const spanX = spanY * (width / height);
+            cx -= (e.clientX - lastX) / rect.width * spanX;
+            cy -= (e.clientY - lastY) / rect.height * spanY;
+            lastX = e.clientX; lastY = e.clientY;
+            requestFrame();
+        });
+
+        // Switch rendering resolution dynamically (720p / 1080p / 4K)
+        resSelect.addEventListener("change", () => {
+            [width, height] = resSelect.value.split("x").map(Number);
+            canvas.width = width;
+            canvas.height = height;
+            requestFrame();
+        });
+
+        // Reset camera coordinates and zoom to the default overview
+        document.getElementById("reset").addEventListener("click", () => {
+            cx = -0.5; cy = 0.0; zoom = 1.0;
+            requestFrame();
+        });
+    </script>
+</body>
+
+</html>

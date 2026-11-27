@@ -1,0 +1,68 @@
+###################################################################
+#
+# Name       : Mandelbrot
+# Description: Explore Mandelbrot sets in your browse/
+#              Computation is done on the server side (tested with RTX-5060Ti GPU )
+# Date       : 2026/11/25
+# Developper : adnovea
+#
+# Mandelbrot code is in "mandelbrot/mandelbrot.cu" then compiled as a lib
+# with nvcc (nvidia CUDA compiler) into libmandelbrot.so
+#
+#
+###################################################################
+
+
+# Define the multi-container application services (here only 1 service)
+services:
+
+  # Service name for the GPU-accelerated Mandelbrot application
+  rtx_gpu:
+
+    image: nvidia/cuda:13.0.0-devel-ubuntu24.04               # Use the official NVIDIA CUDA 13.0 development image based on Ubuntu 24.04
+    container_name: mandelbrot-cnt                            # Assign a custom static name to the running container
+    restart: unless-stopped                                   # Automatically restart the container unless it is explicitly stopped
+    
+    # Set the default working directory inside the container
+    working_dir: /app
+    
+    # Mount the local host directory into the container for live file access
+    volumes:
+      - ./mandelbrot:/app
+      
+    # Map host port 8111 to container port 8080 for web access
+    ports:
+      - "8111:8080"
+      
+    # Execute system setup, dependency installation, CUDA compilation, and start the server
+    command: >
+      sh -c "
+      apt-get update && 
+      apt-get install -y --no-install-recommends python3-pip && 
+      pip install --break-system-packages --no-cache-dir fastapi uvicorn websockets pillow numpy && 
+      nvcc -O3 -arch=native --shared -Xcompiler -fPIC mandelbrot.cu -o libmandelbrot.so && 
+      python3 server.py
+      "
+      
+    # Configure hardware resource allocation for the container
+    deploy:
+      resources:
+        reservations:
+          devices:                                            # Expose all available NVIDIA GPUs to the container
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+
+# Handle the common network for dockers (QNAP container)
+#----------------------------------------------------------
+networks:
+  my_net:
+    name: ai_net
+    external: true
+    ipam:
+      driver: default
+      config:
+        - subnet: "10.0.4.0/24"
+          gateway: "10.0.4.1"
+
