@@ -34,3 +34,8 @@ The project uses minimal code divided into three main components, orchestrated v
    docker compose up -d
    ```
    > **Note:** The `-d` flag runs the container in detached mode (in the background). Omit it if you want to view the console output directly for debugging.
+   > 
+5. To explore the Mandelbrot fractal, open your Web browse and enter:
+   ```
+   http://<your_nas-ip>:8111
+   ```
